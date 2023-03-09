@@ -25,7 +25,7 @@ if sys.version_info.minor < 8:
     requirements.append('typing_extensions')
 
 extras = {
-    '8bit': get_requirements('8bit'),
+    'int8': get_requirements('int8'),
 }
 
 args = {
