@@ -1,5 +1,13 @@
 # LLaMA 
 
+This fork integrates the work of several contributors to enhance the inference code.
+
+- **8-Bit Support**: [tloen/llama-int8](https://github.com/tloen/llama-int8)
+
+- **Better Inference Params**: [shawwn/llama](https://github.com/shawwn/llama)
+
+- **CPU Support**: [markasoftware/llama-cpu](https://github.com/markasoftware/llama-cpu/)
+
 This repository is intended as a minimal, hackable and readable example to load [LLaMA](https://ai.facebook.com/blog/large-language-model-llama-meta-ai/) ([arXiv](https://arxiv.org/abs/2302.13971v1)) models and run inference.
 In order to download the checkpoints and tokenizer, fill this [google form](https://forms.gle/jk851eBVbX1m5TAv5)
 
