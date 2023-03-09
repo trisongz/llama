@@ -330,7 +330,7 @@ class TransformerBlock(nn.Module):
             dim = args.dim, 
             hidden_dim = 4 * args.dim, 
             multiple_of = args.multiple_of,
-            int8_enabled = args.as_int8,
+            as_int8 = args.as_int8,
         )
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
@@ -423,8 +423,6 @@ class Transformer(nn.Module):
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
 
-
-        
 
     @torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):

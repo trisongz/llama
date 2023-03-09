@@ -153,9 +153,9 @@ class LLaMA:
             decoded.append(self.tokenizer.decode(t))
         return decoded
     
-
+    
     @classmethod
-    def load_default(
+    def load_dist(
         cls,
         ckpt_dir: str,
         max_seq_len: int,
@@ -168,7 +168,7 @@ class LLaMA:
 
     ) -> 'LLaMA':
         """
-        Load a model from a checkpoint directory.
+        Load a model from a checkpoint directory in distributed mode
         """
 
         start_time = time.time()
@@ -204,6 +204,95 @@ class LLaMA:
         model.load_state_dict(checkpoint, strict = False)
         generator = LLaMA(model, tokenizer, params = model_args)
 
+        if model_args.device_name == 'cuda':
+            logger.info(
+                f"Loaded in {time.time() - start_time:.2f} seconds with {torch.cuda.max_memory_allocated() / 1024 ** 3:.2f} GiB"
+            )
+        else:
+            logger.info(f"Loaded in {time.time() - start_time:.2f} seconds")
+        return generator
+
+    @classmethod
+    def load_default(
+        cls,
+        ckpt_dir: str,
+        max_seq_len: int,
+        max_batch_size: int,
+
+        device: Optional[str] = None,
+        tokenizer_path: Optional[str] = None,
+
+    ) -> 'LLaMA':
+        """
+        Load a model from a checkpoint directory.
+        """
+
+        start_time = time.time()
+        ckpt_path = Path(ckpt_dir)
+        checkpoints = sorted(ckpt_path.glob("*.pth"))
+        logger.info(f"Loading checkpoint {checkpoints}")
+        
+        params = json.loads(ckpt_path.joinpath('params.json').read_text())
+        model_args: ModelArgs = ModelArgs(
+            max_seq_len = max_seq_len, 
+            max_batch_size = max_batch_size, 
+            device = device,
+            **params
+        )
+        if tokenizer_path: tokenizer_path = Path(tokenizer_path)
+        elif ckpt_path.joinpath('tokenizer.model').exists():
+            tokenizer_path = ckpt_path.joinpath('tokenizer.model')
+        elif ckpt_path.parent.joinpath('tokenizer.model').exists():
+            tokenizer_path = ckpt_path.parent.joinpath('tokenizer.model')
+        else:
+            raise ValueError('Tokenizer not found')
+        
+        tokenizer = Tokenizer(model_path = tokenizer_path.as_posix())
+        model_args.vocab_size = tokenizer.n_words
+        torch.set_default_tensor_type(get_torch_default_tensor_type())
+        model = Transformer(model_args)
+        key_to_dim = {
+            "w1": 0,
+            "w2": -1,
+            "w3": 0,
+            "wo": -1,
+            "wq": 0,
+            "wk": 0,
+            "wv": 0,
+            "output": 0,
+            "tok_embeddings": -1,
+            "ffn_norm": None,
+            "attention_norm": None,
+            "norm": None,
+            "rope": None,
+        }
+
+        torch.set_default_tensor_type(torch.FloatTensor)
+        # load the state dict incrementally, to avoid memory problems
+        for i, ckpt in enumerate(checkpoints):
+            logger.info(f"Loading checkpoint {i}/{len(checkpoints)}")
+            checkpoint = torch.load(ckpt, map_location="cpu")
+            for parameter_name, parameter in model.named_parameters():
+                short_name = parameter_name.split(".")[-2]
+                if key_to_dim[short_name] is None and i == 0:
+                    parameter.data = checkpoint[parameter_name]
+                elif key_to_dim[short_name] == 0:
+                    size = checkpoint[parameter_name].size(0)
+                    parameter.data[size * i : size * (i + 1), :] = checkpoint[
+                        parameter_name
+                    ]
+                elif key_to_dim[short_name] == -1:
+                    size = checkpoint[parameter_name].size(-1)
+                    parameter.data[:, size * i : size * (i + 1)] = checkpoint[
+                        parameter_name
+                    ]
+                del checkpoint[parameter_name]
+            del checkpoint
+        
+        if model_args.device_name == 'cuda':
+            model.cuda()
+        
+        generator = LLaMA(model, tokenizer, params = model_args)
         if model_args.device_name == 'cuda':
             logger.info(
                 f"Loaded in {time.time() - start_time:.2f} seconds with {torch.cuda.max_memory_allocated() / 1024 ** 3:.2f} GiB"
@@ -318,6 +407,7 @@ class LLaMA:
         quantize: Optional[bool] = True,
         int8_enabled: Optional[bool] = int8_available,
         tokenizer_path: Optional[str] = None,
+        is_dist_mode: Optional[bool] = False,
     ) -> 'LLaMA':
         """
         Load a model from a checkpoint directory.
@@ -335,6 +425,15 @@ class LLaMA:
                 tokenizer_path = tokenizer_path,
             )
         
+        if not is_dist_mode:
+            return cls.load_default(
+                ckpt_dir = ckpt_dir,
+                max_seq_len = max_seq_len,
+                max_batch_size = max_batch_size,
+                device = device,
+                tokenizer_path = tokenizer_path,
+            )
+
         local_rank, world_size = setup_model_parallel(seed)
         if local_rank > 0: sys.stdout = open(os.devnull, "w")
         return cls.load_default(
