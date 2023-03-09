@@ -2,9 +2,11 @@ import os
 import torch
 import contextlib
 import functools
+import logging
 
 from typing import Optional, Union, Tuple
 
+logger = logging.getLogger(__name__)
 
 @functools.lru_cache()
 def get_torch_device_name() -> str:
@@ -60,12 +62,15 @@ def setup_model_parallel(
 
     from fairscale.nn.model_parallel.initialize import initialize_model_parallel
     
-    local_rank = int(os.environ.get("LOCAL_RANK", -1))
-    world_size = int(os.environ.get("WORLD_SIZE", -1))
+    local_rank = int(os.getenv("LOCAL_RANK", -1))
+    world_size = int(os.getenv("WORLD_SIZE", -1))
 
     device_name = device_name or get_torch_device_name()
+    dist_method = get_torch_dist_method(device_name)
 
-    torch.distributed.init_process_group(get_torch_dist_method(device_name))
+    logger.info(f"Device: {device_name} - Local rank: {local_rank} - World size: {world_size} - Dist method: {dist_method}")
+
+    torch.distributed.init_process_group(dist_method)
     
     initialize_model_parallel(world_size)
     if device_name == 'cuda':
