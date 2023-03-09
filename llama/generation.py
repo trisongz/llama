@@ -79,6 +79,7 @@ class LLaMA:
             if temperature > 0 and \
                 repetition_penalty_range > 0 and \
                 repetition_penalty_slope > 0:
+
                 next_token_scores = apply_top_p(logits, top_p)
                 next_token_scores = apply_temperature(next_token_scores, temperature)
                 next_token_scores = apply_advanced_repetition_penalty(
@@ -108,6 +109,10 @@ class LLaMA:
                             logits_new[i, token] = logits[i, token] / repetition_penalty
                 logits = logits_new
 
+                if temperature > 0:
+                    probs = torch.softmax(logits / temperature, dim=-1)
+                    next_token = sample(probs, top_p=top_p, top_k=top_k)
+            
             elif temperature > 0:
                 probs = torch.softmax(logits / temperature, dim=-1)
                 next_token = sample(probs, top_p=top_p, top_k=top_k)
